@@ -2,7 +2,10 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Копируем файл бота
+# Устанавливаем зависимости
+RUN pip install vk-api requests
+
+# Копируем бота
 COPY bot.py .
 
 # Запускаем бота
