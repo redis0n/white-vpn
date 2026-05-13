@@ -32,7 +32,7 @@ import vk_api
 from vk_api.longpoll import VkLongPoll, VkEventType
 
 # === НАСТРОЙКИ ===
-VK_TOKEN = os.getenv("VK_TOKEN", "vk1.a.zlTzO6lNzOBYHaY-QCZIyaIb455Z0Gy3WXuRVLGR_SgsL7KwaSSTFVar-g_loULT7K6GPcBnKkrlr3sdLSK9OZ5WFJxoqrI3CzUhzu9aTdQCQbsIYpLPZ1KM8Qe_CNbpv-M1_cIQdFGf5j22oT-ZLXONIXdxq0g23S0FnJLVJ7YLD_UaEv1F3Xi4TTA9L0tfOSwLyhcOF0pUJGBbFhgmbg")
+VK_TOKEN = "vk1.a.zlTzO6lNzOBYHaY-QCZIyaIb455Z0Gy3WXuRVLGR_SgsL7KwaSSTFVar-g_loULT7K6GPcBnKkrlr3sdLSK9OZ5WFJxoqrI3CzUhzu9aTdQCQbsIYpLPZ1KM8Qe_CNbpv-M1_cIQdFGf5j22oT-ZLXONIXdxq0g23S0FnJLVJ7YLD_UaEv1F3Xi4TTA9L0tfOSwLyhcOF0pUJGBbFhgmbg"
 REPO_URL = "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/WHITE-CIDR-RU-checked.txt"
 
 user_states = {}
@@ -78,56 +78,32 @@ def get_all_configs():
         print(f"❌ Ошибка: {e}")
         return []
 
-# === ФОРМАТИРОВАНИЕ ССЫЛОК (БЕЗ КАВЫЧЕК!) ===
+# === ФОРМАТИРОВАНИЕ ССЫЛОК (ТОЛЬКО ССЫЛКИ, БЕЗ НУМЕРАЦИИ) ===
 def format_configs_message(configs):
+    """Возвращает только ссылки, каждая с новой строки, без лишнего текста"""
     if not configs:
-        return "❌ Не удалось загрузить конфиги. Попробуйте позже."
+        return ""
     
-    message = "📁 *WHITE VPN — ВСЕ ДОСТУПНЫЕ КОНФИГИ:*\n\n"
-    message += "🔽 Скопируйте любую ссылку и вставьте в Happ:\n\n"
-    
-    max_configs = min(len(configs), 50)
-    
-    for i, config in enumerate(configs[:max_configs], 1):
-        message += f"{i}. {config}\n\n"  # ← БЕЗ обратных кавычек!
-    
-    if len(configs) > max_configs:
-        message += f"... и ещё {len(configs) - max_configs} конфигов\n\n"
-    
-    message += "✨ *Инструкция:*\n"
-    message += "1. Скопируйте любую ссылку выше\n"
-    message += "2. Вставьте в приложение Happ\n"
-    message += "3. Наслаждайтесь свободным интернетом!\n\n"
-    message += "🌐 *WHITE VPN — ваш надёжный выбор*"
-    
-    return message
+    # Просто ссылки друг под другом, без нумерации и без кавычек
+    return "\n".join(configs)
 
-# === ОТПРАВКА ДЛИННЫХ СООБЩЕНИЙ ===
-def send_long_message(vk, user_id, text, max_length=4000):
-    if len(text) <= max_length:
+# === ОТПРАВКА ДЛИННЫХ СООБЩЕНИЙ (РАЗБИВКА ПО 100 ССЫЛОК) ===
+def send_configs(vk, user_id, configs):
+    """Отправляет ссылки частями, чистыми сообщениями без лишнего текста"""
+    if not configs:
+        return
+    
+    # Отправляем по 100 ссылок за раз (ВК лимит ~4000 символов)
+    chunk_size = 100
+    for i in range(0, len(configs), chunk_size):
+        chunk = configs[i:i+chunk_size]
+        message = "\n".join(chunk)
         vk.messages.send(
             user_id=user_id,
-            message=text,
+            message=message,
             random_id=random.randint(1, 2**31)
         )
-    else:
-        parts = []
-        current_part = ""
-        for line in text.split('\n'):
-            if len(current_part) + len(line) + 1 > max_length:
-                parts.append(current_part)
-                current_part = line + '\n'
-            else:
-                current_part += line + '\n'
-        if current_part:
-            parts.append(current_part)
-        for i, part in enumerate(parts, 1):
-            vk.messages.send(
-                user_id=user_id,
-                message=f"📄 *Часть {i}/{len(parts)}*\n\n{part}",
-                random_id=random.randint(1, 2**31)
-            )
-            time.sleep(0.5)
+        time.sleep(0.3)  # Пауза между сообщениями
 
 # === ОСНОВНОЙ БОТ ===
 def main():
@@ -158,11 +134,14 @@ def main():
                     message_text = event.text.lower().strip()
                     print(f"📩 От {user_id}: {message_text[:50]}")
                     
+                    # Обновляем кеш конфигов раз в 10 минут
                     if time.time() - last_update > 600 or not cached_configs:
                         cached_configs = get_all_configs()
                         last_update = time.time()
                     
+                    # Проверяем состояние пользователя
                     if user_id in user_states and user_states[user_id] == "waiting_for_site_answer":
+                        
                         if message_text in ["да", "+", "yes", "lf", "y", "даа", "ага", "ок", "окей"]:
                             vk.messages.send(
                                 user_id=user_id,
@@ -170,17 +149,14 @@ def main():
                                 random_id=random.randint(1, 2**31)
                             )
                             del user_states[user_id]
+                            
                         elif message_text in ["нет", "-", "no", "ytn", "n", "неа", "не открывается", "нет("]:
-                            vk.messages.send(
-                                user_id=user_id,
-                                message="😔 Понял, сайт не открывается.\n\n🔽 *Отправляю все доступные конфиги прямо в чат:*\n\n⏳ Подождите пару секунд...",
-                                random_id=random.randint(1, 2**31)
-                            )
-                            time.sleep(1.5)
+                            # Сначала отправляем только ссылки, без лишнего текста
                             if cached_configs:
-                                configs_message = format_configs_message(cached_configs)
-                                send_long_message(vk, user_id, configs_message)
+                                send_configs(vk, user_id, cached_configs)
                                 time.sleep(0.5)
+                                
+                                # Только после ссылок отправляем инструкцию
                                 vk.messages.send(
                                     user_id=user_id,
                                     message="📱 *Как использовать:*\n\n1️⃣ Скопируйте любую ссылку выше\n2️⃣ Скачайте Happ: https://disk.yandex.ru/d/LffqUWBFbfs2Yw\n3️⃣ Вставьте ссылку в приложение\n\n🚀 *WHITE VPN — ваш надёжный выбор!*",
@@ -192,6 +168,7 @@ def main():
                                     message="❌ Ошибка: не удалось загрузить конфиги. Попробуйте позже.",
                                     random_id=random.randint(1, 2**31)
                                 )
+                            
                             del user_states[user_id]
                         else:
                             vk.messages.send(
@@ -201,13 +178,14 @@ def main():
                             )
                         continue
                     
-                    # Новый пользователь
+                    # Новый пользователь — отправляем приветствие
                     vk.messages.send(
                         user_id=user_id,
                         message="🌐 *WHITE VPN — Добро пожаловать!* 🌐\n\n🔗 *Попробуйте зайти на сайт:*\n👉 https://redis0n.github.io/\n\n❓ *Открывается ли сайт?*\nНапишите «да» или «нет»",
                         random_id=random.randint(1, 2**31)
                     )
                     user_states[user_id] = "waiting_for_site_answer"
+                    
         except Exception as e:
             print(f"❌ Ошибка: {e}")
             time.sleep(10)
