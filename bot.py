@@ -10,6 +10,7 @@ import random
 import threading
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from collections import deque
 
 # === АВТОУСТАНОВКА БИБЛИОТЕК ===
 def install_package(package):
@@ -41,6 +42,10 @@ CONFIGS_URL = "https://translated.turbopages.org/proxy_u/ru-en.ru.518e6b1b-6a0c8
 HAPP_URL = "https://disk.yandex.ru/d/rSVad4tmlR_dGg"
 
 user_states = {}
+
+# === КЕШ ДЛЯ ПРЕДОТВРАЩЕНИЯ ДУБЛЕЙ ===
+# Храним последние 100 обработанных ID сообщений
+processed_messages = deque(maxlen=100)
 
 # === ВЕБ-СЕРВЕР ДЛЯ KEEP-ALIVE ===
 class HealthCheckHandler(BaseHTTPRequestHandler):
@@ -99,9 +104,20 @@ def main():
         try:
             for event in longpoll.listen():
                 if event.type == VkEventType.MESSAGE_NEW and event.to_me:
+                    
+                    # === ПРОВЕРКА НА ДУБЛЬ ===
+                    message_id = getattr(event, 'message_id', None)
+                    if message_id and message_id in processed_messages:
+                        print(f"⚠️ Пропущен дубль сообщения {message_id}")
+                        continue
+                    
+                    # Запоминаем ID обработанного сообщения
+                    if message_id:
+                        processed_messages.append(message_id)
+                    
                     user_id = event.user_id
                     message_text = event.text.lower().strip()
-                    print(f"📩 От {user_id}: {message_text[:50]}")
+                    print(f"📩 От {user_id}: {message_text[:50]} (ID: {message_id})")
                     
                     # Проверяем состояние пользователя
                     if user_id in user_states and user_states[user_id] == "waiting_for_site_answer":
@@ -126,7 +142,7 @@ def main():
                                 )
                                 time.sleep(0.5)
                                 
-                                # Инструкция по использованию (форматирование через подчеркивания и заглавные)
+                                # Инструкция по использованию
                                 vk.messages.send(
                                     user_id=user_id,
                                     message="📱 ИНСТРУКЦИЯ:\n\n"
