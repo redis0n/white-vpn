@@ -34,8 +34,11 @@ from vk_api.longpoll import VkLongPoll, VkEventType
 # === НАСТРОЙКИ ===
 VK_TOKEN = "vk1.a.zlTzO6lNzOBYHaY-QCZIyaIb455Z0Gy3WXuRVLGR_SgsL7KwaSSTFVar-g_loULT7K6GPcBnKkrlr3sdLSK9OZ5WFJxoqrI3CzUhzu9aTdQCQbsIYpLPZ1KM8Qe_CNbpv-M1_cIQdFGf5j22oT-ZLXONIXdxq0g23S0FnJLVJ7YLD_UaEv1F3Xi4TTA9L0tfOSwLyhcOF0pUJGBbFhgmbg"
 
-# НОВАЯ ССЫЛКА НА ФАЙЛ С КОНФИГАМИ (GitLab)
+# ССЫЛКА НА ФАЙЛ С КОНФИГАМИ (GitLab)
 CONFIGS_URL = "https://translated.turbopages.org/proxy_u/ru-en.ru.518e6b1b-6a0c8606-38125922-74722d776562/https/gitlab.com/igareck/vpn-configs-for-russia/-/raw/main/WHITE-CIDR-RU-checked.txt?ref_type=heads"
+
+# НОВАЯ ССЫЛКА НА HAPP
+HAPP_URL = "https://disk.yandex.ru/d/rSVad4tmlR_dGg"
 
 user_states = {}
 
@@ -68,7 +71,6 @@ def keep_alive():
 
 # === ПРОВЕРКА ДОСТУПНОСТИ ССЫЛКИ ===
 def check_configs_url():
-    """Проверяет, доступна ли ссылка с конфигами"""
     try:
         response = requests.get(CONFIGS_URL, timeout=10)
         return response.status_code == 200
@@ -92,7 +94,6 @@ def main():
         return
     
     print("🎯 Бот готов к работе!")
-    print(f"📁 Источник конфигов: {CONFIGS_URL}")
     
     while True:
         try:
@@ -108,17 +109,16 @@ def main():
                         if message_text in ["да", "+", "yes", "lf", "y", "даа", "ага", "ок", "окей"]:
                             vk.messages.send(
                                 user_id=user_id,
-                                message="✅ Отлично! Рады, что всё работает.\n\nЕсли понадобится помощь — просто напишите любое сообщение 😊\n\n🌐 *WHITE VPN — всегда с вами!*",
+                                message="✅ Отлично! Рады, что всё работает.\n\nЕсли понадобится помощь — просто напишите любое сообщение 😊\n\n🌐 WHITE VPN — всегда с вами!",
                                 random_id=random.randint(1, 2**31)
                             )
                             del user_states[user_id]
                             
                         elif message_text in ["нет", "-", "no", "ytn", "n", "неа", "не открывается", "нет("]:
-                            # Проверяем доступность ссылки
                             url_available = check_configs_url()
                             
                             if url_available:
-                                # Отправляем ТОЛЬКО ссылку на файл с конфигами
+                                # Отправляем ссылку на файл с конфигами
                                 vk.messages.send(
                                     user_id=user_id,
                                     message=CONFIGS_URL,
@@ -126,10 +126,20 @@ def main():
                                 )
                                 time.sleep(0.5)
                                 
-                                # После ссылки отправляем инструкцию
+                                # Инструкция по использованию (форматирование через подчеркивания и заглавные)
                                 vk.messages.send(
                                     user_id=user_id,
-                                    message="📱 *Как использовать:*\n\n1️⃣ Перейдите по ссылке выше\n2️⃣ Скопируйте любую ссылку vless:// из файла\n3️⃣ Скачайте Happ: https://disk.yandex.ru/d/LffqUWBFbfs2Yw\n4️⃣ Вставьте скопированную ссылку в Happ\n\n🚀 *WHITE VPN — ваш надёжный выбор!*",
+                                    message="📱 ИНСТРУКЦИЯ:\n\n"
+                                           "➖➖➖➖➖➖➖➖➖➖\n\n"
+                                           "1️⃣ Скопируйте ссылку выше\n\n"
+                                           "2️⃣ Вставьте её в приложение HAPP\n\n"
+                                           "3️⃣ Приложение само загрузит все конфиги\n\n"
+                                           "4️⃣ Выберите любой и подключитесь\n\n"
+                                           "➖➖➖➖➖➖➖➖➖➖\n\n"
+                                           "📲 Скачать HAPP:\n"
+                                           f"{HAPP_URL}\n\n"
+                                           "➖➖➖➖➖➖➖➖➖➖\n\n"
+                                           "🚀 WHITE VPN — свобода в один клик!",
                                     random_id=random.randint(1, 2**31)
                                 )
                             else:
@@ -143,7 +153,7 @@ def main():
                         else:
                             vk.messages.send(
                                 user_id=user_id,
-                                message="❓ Пожалуйста, ответьте «да» или «нет».\n\nОткрывается ли сайт https://redis0n.github.io/?",
+                                message="❓ Пожалуйста, ответьте ДА или НЕТ.\n\nОткрывается ли сайт:\nhttps://redis0n.github.io/",
                                 random_id=random.randint(1, 2**31)
                             )
                         continue
@@ -151,7 +161,13 @@ def main():
                     # Новый пользователь
                     vk.messages.send(
                         user_id=user_id,
-                        message="🌐 *WHITE VPN — Добро пожаловать!* 🌐\n\n🔗 *Попробуйте зайти на сайт:*\n👉 https://redis0n.github.io/\n\n❓ *Открывается ли сайт?*\nНапишите «да» или «нет»",
+                        message="🌐 WHITE VPN — ДОБРО ПОЖАЛОВАТЬ! 🌐\n\n"
+                               "➖➖➖➖➖➖➖➖➖➖\n\n"
+                               "🔗 ПРОВЕРЬТЕ ДОСТУП К САЙТУ:\n"
+                               "https://redis0n.github.io/\n\n"
+                               "➖➖➖➖➖➖➖➖➖➖\n\n"
+                               "❓ САЙТ ОТКРЫВАЕТСЯ?\n"
+                               "Напишите ДА или НЕТ",
                         random_id=random.randint(1, 2**31)
                     )
                     user_states[user_id] = "waiting_for_site_answer"
