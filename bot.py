@@ -11,6 +11,7 @@ import threading
 import requests
 import socket
 import urllib.parse
+import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -20,7 +21,7 @@ def install_package(package):
     subprocess.check_call([sys.executable, "-m", "pip", "install", package])
 
 def check_and_install_dependencies():
-    required_packages = ["vk-api", "requests"]
+    required_packages = ["vk-api", "requests", "openai"]
     for package in required_packages:
         try:
             importlib.import_module(package.replace("-", "_"))
@@ -34,9 +35,14 @@ check_and_install_dependencies()
 
 import vk_api
 from vk_api.longpoll import VkLongPoll, VkEventType
+from openai import OpenAI
 
 # === НАСТРОЙКИ ===
 VK_TOKEN = "vk1.a.zlTzO6lNzOBYHaY-QCZIyaIb455Z0Gy3WXuRVLGR_SgsL7KwaSSTFVar-g_loULT7K6GPcBnKkrlr3sdLSK9OZ5WFJxoqrI3CzUhzu9aTdQCQbsIYpLPZ1KM8Qe_CNbpv-M1_cIQdFGf5j22oT-ZLXONIXdxq0g23S0FnJLVJ7YLD_UaEv1F3Xi4TTA9L0tfOSwLyhcOF0pUJGBbFhgmbg"
+
+# DeepSeek API
+DEEPSEEK_API_KEY = "sk-ecdd0a474a1f446291b0d4b415751980"
+DEEPSEEK_MODEL = "deepseek-v4-flash"
 
 # Список доступных ссылок для режима "конфиг"
 CONFIG_URLS = [
@@ -46,11 +52,19 @@ CONFIG_URLS = [
     "https://translated.turbopages.org/proxy_u/en-ru.ru.4457a266-6a0ca8f8-0450916b-74722d776562/https/raw.githubusercontent.com/Maskkost93/kizyak-vpn-4.0/refs/heads/main/kizyaktestru.txt"
 ]
 
-# JSON ссылка (обрабатывается отдельно)
 JSON_URL = "https://translated.turbopages.org/proxy_u/en-ru.ru.a0d5284c-6a0ca798-0ee9aa88-74722d776562/https/raw.githubusercontent.com/tiagorrg/vless-checker/refs/heads/main/docs/keys.json"
-
-# Ссылка для тестирования быстрых конфигов
 FAST_CONFIG_URL = "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt"
+
+# Инициализация DeepSeek клиента
+try:
+    deepseek_client = OpenAI(
+        api_key=DEEPSEEK_API_KEY,
+        base_url="https://api.deepseek.com"
+    )
+    print("✅ DeepSeek API подключен")
+except Exception as e:
+    print(f"⚠️ Ошибка подключения DeepSeek: {e}")
+    deepseek_client = None
 
 user_states = {}
 processed_messages = deque(maxlen=100)
@@ -84,17 +98,108 @@ def keep_alive():
 
 # === ФУНКЦИИ ДЛЯ РЕЖИМОВ ===
 
-# Режим 1: Конфиг
-def get_config_from_url(url):
-    try:
-        response = requests.get(url, timeout=15)
-        if response.status_code == 200:
-            return response.text
+def show_main_menu(vk, user_id):
+    """Показывает главное меню"""
+    menu = "🌐 WHITE VPN - Главное меню\n\nВыберите режим работы:\n\n1️⃣ Конфиг - получить ссылку с конфигами\n\n2️⃣ Самые быстрые конфиги - тестирование и выдача лучшего\n\n3️⃣ Просмотр страниц - обход блокировок или поиск\n\nНапишите номер режима (1, 2 или 3)"
+    vk.messages.send(
+        user_id=user_id,
+        message=menu,
+        random_id=random.randint(1, 2**31)
+    )
+    user_states[user_id] = "waiting_for_mode"
+
+def generate_turbopages_url(original_url, template_key="583c48c2-6a0ca2e3-ee125e71-74722d776562"):
+    """Генерирует прокси-ссылку через turbopages"""
+    base = f"https://translated.turbopages.org/proxy_u/en-ru.ru.{template_key}/https/"
+    clean_url = original_url.replace("https://", "").replace("http://", "")
+    return base + clean_url
+
+def search_with_deepseek(query):
+    """Ищет через DeepSeek и возвращает топ-10 ссылок с заголовками"""
+    if not deepseek_client:
         return None
-    except:
+    
+    prompt = f"""Ты - поисковый помощник. Найди актуальную информацию по запросу: "{query}"
+
+Выдай ТОЛЬКО 10 самых релевантных ссылок в строго следующем формате:
+
+1] ПОЛНЫЙ_URL - Краткий заголовок/описание ссылки
+2] ПОЛНЫЙ_URL - Краткий заголовок/описание ссылки
+...
+10] ПОЛНЫЙ_URL - Краткий заголовок/описание ссылки
+
+Правила:
+- URL должен быть полным, начинаться с http:// или https://
+- Описание должно быть кратким (до 10 слов)
+- Только ссылки, без лишнего текста
+- Без маркдауна и форматирования
+- Только то, что действительно существует и доступно
+
+Ссылки должны быть разнообразными и релевантными запросу."""
+    
+    try:
+        response = deepseek_client.chat.completions.create(
+            model=DEEPSEEK_MODEL,
+            messages=[
+                {"role": "system", "content": "Ты полезный поисковый ассистент. Отвечай только в указанном формате."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=2000
+        )
+        
+        result = response.choices[0].message.content
+        return result
+    except Exception as e:
+        print(f"❌ Ошибка DeepSeek: {e}")
         return None
 
+def convert_search_results_to_proxy(search_results):
+    """Конвертирует результаты поиска в прокси-ссылки"""
+    lines = search_results.strip().split('\n')
+    proxy_links = []
+    
+    for line in lines:
+        if ']' in line and 'http' in line:
+            parts = line.split(']', 1)
+            if len(parts) == 2:
+                url_part = parts[1].strip()
+                url_end = url_part.find(' -')
+                if url_end > 0:
+                    url = url_part[:url_end].strip()
+                else:
+                    url = url_part.split()[0].strip() if url_part.split() else url_part
+                
+                if url.startswith('http'):
+                    proxy_url = generate_turbopages_url(url)
+                    # Сохраняем заголовок
+                    title = url_part[url_end + 3:] if url_end > 0 and len(url_part) > url_end + 3 else "Без названия"
+                    proxy_links.append({
+                        'original': url,
+                        'proxy': proxy_url,
+                        'title': title[:100]
+                    })
+    
+    return proxy_links
+
+def send_proxy_links(vk, user_id, links):
+    """Отправляет прокси-ссылки пользователю"""
+    if not links:
+        vk.messages.send(
+            user_id=user_id,
+            message="❌ Не найдено ссылок по вашему запросу",
+            random_id=random.randint(1, 2**31)
+        )
+        return
+    
+    message = "🔍 Результаты поиска (прокси-ссылки для обхода блокировок):\n\n"
+    for i, link in enumerate(links[:10], 1):
+        message += f"{i}] {link['proxy']}\n📌 {link['title'][:80]}\n\n"
+    
+    send_long_message(vk, user_id, message)
+
 def send_long_message(vk, user_id, text, max_length=4000):
+    """Отправляет длинное сообщение частями"""
     if len(text) <= max_length:
         vk.messages.send(
             user_id=user_id,
@@ -120,9 +225,17 @@ def send_long_message(vk, user_id, text, max_length=4000):
             )
             time.sleep(0.5)
 
+def get_config_from_url(url):
+    try:
+        response = requests.get(url, timeout=15)
+        if response.status_code == 200:
+            return response.text
+        return None
+    except:
+        return None
+
 def handle_config_mode(vk, user_id, url_index=None):
     if url_index is None:
-        # Показываем список доступных ссылок
         message = "📁 Доступные источники конфигов:\n\n"
         for i, url in enumerate(CONFIG_URLS, 1):
             message += f"{i}. Источник {i}\n"
@@ -137,11 +250,9 @@ def handle_config_mode(vk, user_id, url_index=None):
         return
     
     if url_index == 5:
-        # Обработка JSON
         content = get_config_from_url(JSON_URL)
         if content:
             try:
-                import json
                 data = json.loads(content)
                 vless_urls = []
                 if isinstance(data, list):
@@ -197,22 +308,12 @@ def handle_config_mode(vk, user_id, url_index=None):
             message="❌ Неверный номер. Попробуйте ещё раз",
             random_id=random.randint(1, 2**31)
         )
+    
+    # Показываем меню после выполнения
+    time.sleep(1)
+    show_main_menu(vk, user_id)
 
-# Режим 2: Просмотр страниц через turbopages
-def generate_turbopages_url(original_url, template_key="583c48c2-6a0ca2e3-ee125e71-74722d776562"):
-    base = f"https://translated.turbopages.org/proxy_u/en-ru.ru.{template_key}/https/"
-    clean_url = original_url.replace("https://", "").replace("http://", "")
-    return base + clean_url
-
-def handle_proxy_mode(vk, user_id):
-    vk.messages.send(
-        user_id=user_id,
-        message="🌐 Режим просмотра страниц\n\nВведите ссылку на сайт, который нужно открыть (например, google.com или https://example.com)",
-        random_id=random.randint(1, 2**31)
-    )
-    user_states[user_id] = "waiting_for_proxy_url"
-
-# Режим 3: Самые быстрые конфиги
+# === ТЕСТИРОВАНИЕ КОНФИГОВ ===
 def parse_host_port(key):
     try:
         without_scheme = key[len("vless://"):]
@@ -261,6 +362,7 @@ def handle_fast_mode(vk, user_id):
                 message="❌ Не удалось загрузить конфиги для тестирования",
                 random_id=random.randint(1, 2**31)
             )
+            show_main_menu(vk, user_id)
             return
         
         lines = response.text.strip().splitlines()
@@ -272,6 +374,7 @@ def handle_fast_mode(vk, user_id):
                 message="❌ Не найдено VLESS ключей",
                 random_id=random.randint(1, 2**31)
             )
+            show_main_menu(vk, user_id)
             return
         
         vk.messages.send(
@@ -318,6 +421,52 @@ def handle_fast_mode(vk, user_id):
             message=f"❌ Ошибка: {e}",
             random_id=random.randint(1, 2**31)
         )
+    
+    # Показываем меню после выполнения
+    time.sleep(1)
+    show_main_menu(vk, user_id)
+
+def handle_proxy_mode(vk, user_id):
+    vk.messages.send(
+        user_id=user_id,
+        message="🌐 Режим просмотра страниц / поиска\n\nЧто вы хотите сделать?\n\n🔗 Вставьте ссылку - я сделаю прокси для обхода блокировки\n\n🔍 Напишите поисковый запрос - я найду топ-10 ссылок и сделаю прокси для каждой\n\nПримеры:\n- Ссылка: https://google.com\n- Запрос: новости технологий 2026",
+        random_id=random.randint(1, 2**31)
+    )
+    user_states[user_id] = "waiting_for_proxy_input"
+
+def handle_proxy_input(vk, user_id, text):
+    # Проверяем, является ли текст ссылкой
+    if text.startswith(("http://", "https://")) or ('.' in text and ' ' not in text[:50]):
+        # Это ссылка - просто проксируем
+        proxy_url = generate_turbopages_url(text)
+        vk.messages.send(
+            user_id=user_id,
+            message=f"🔗 Ваша прокси-ссылка:\n\n{proxy_url}\n\n💡 Скопируйте и вставьте в браузер",
+            random_id=random.randint(1, 2**31)
+        )
+    else:
+        # Это поисковый запрос
+        vk.messages.send(
+            user_id=user_id,
+            message=f"🔍 Ищу: \"{text}\"\n\n⏳ Пожалуйста, подождите 5-10 секунд...",
+            random_id=random.randint(1, 2**31)
+        )
+        
+        search_results = search_with_deepseek(text)
+        
+        if search_results:
+            proxy_links = convert_search_results_to_proxy(search_results)
+            send_proxy_links(vk, user_id, proxy_links)
+        else:
+            vk.messages.send(
+                user_id=user_id,
+                message="❌ Не удалось выполнить поиск. Попробуйте позже или введите прямую ссылку",
+                random_id=random.randint(1, 2**31)
+            )
+    
+    # Показываем меню после выполнения
+    time.sleep(1)
+    show_main_menu(vk, user_id)
 
 # === ОСНОВНОЙ БОТ ===
 def main():
@@ -351,7 +500,7 @@ def main():
                         processed_messages.append(message_id)
                     
                     user_id = event.user_id
-                    message_text = event.text.lower().strip()
+                    message_text = event.text.strip()
                     print(f"📩 От {user_id}: {message_text[:50]}")
                     
                     # Обработка состояний
@@ -377,7 +526,6 @@ def main():
                             if message_text.isdigit():
                                 handle_config_mode(vk, user_id, int(message_text))
                             elif message_text.startswith("http"):
-                                # Пользователь отправил свою ссылку
                                 vk.messages.send(
                                     user_id=user_id,
                                     message=message_text,
@@ -389,6 +537,8 @@ def main():
                                     message="📱 Инструкция:\n\n1️⃣ Скопируйте ссылку выше\n2️⃣ Вставьте её в приложение Happ\n\n🚀 WHITE VPN - свобода в один клик!",
                                     random_id=random.randint(1, 2**31)
                                 )
+                                time.sleep(1)
+                                show_main_menu(vk, user_id)
                             else:
                                 vk.messages.send(
                                     user_id=user_id,
@@ -398,30 +548,13 @@ def main():
                             del user_states[user_id]
                             continue
                         
-                        elif state == "waiting_for_proxy_url":
-                            if message_text.startswith("http") or "." in message_text:
-                                proxy_url = generate_turbopages_url(message_text)
-                                vk.messages.send(
-                                    user_id=user_id,
-                                    message=f"🌐 Ваша прокси-ссылка:\n\n{proxy_url}\n\n💡 Скопируйте и вставьте в браузер",
-                                    random_id=random.randint(1, 2**31)
-                                )
-                            else:
-                                vk.messages.send(
-                                    user_id=user_id,
-                                    message="❌ Введите корректную ссылку (например, google.com или https://example.com)",
-                                    random_id=random.randint(1, 2**31)
-                                )
+                        elif state == "waiting_for_proxy_input":
+                            handle_proxy_input(vk, user_id, message_text)
                             del user_states[user_id]
                             continue
                     
-                    # Начало диалога - показываем режимы
-                    vk.messages.send(
-                        user_id=user_id,
-                        message="🌐 WHITE VPN - Добро пожаловать!\n\nВыберите режим работы:\n\n1️⃣ Конфиг - получить ссылку с конфигами\n\n2️⃣ Самые быстрые конфиги - тестирование и выдача лучшего\n\n3️⃣ Просмотр страниц - обход блокировок через turbopages\n\nНапишите номер режима (1, 2 или 3)",
-                        random_id=random.randint(1, 2**31)
-                    )
-                    user_states[user_id] = "waiting_for_mode"
+                    # Если нет состояния - показываем главное меню
+                    show_main_menu(vk, user_id)
                     
         except Exception as e:
             print(f"❌ Ошибка: {e}")
