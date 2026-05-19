@@ -115,7 +115,7 @@ def main():
                         if message_text in ["да", "+", "yes", "lf", "y", "даа", "ага", "ок", "окей"]:
                             vk.messages.send(
                                 user_id=user_id,
-                                message="Отлично! Рады, что всё работает.\n\nЕсли понадобится помощь - просто напишите любое сообщение 😊\n\nWHITE VPN - всегда с вами!",
+                                message="✅ Отлично! Рады, что всё работает.\n\n💬 Если понадобится помощь - просто напишите любое сообщение 😊\n\n🌐 WHITE VPN - всегда с вами!",
                                 random_id=random.randint(1, 2**31)
                             )
                             del user_states[user_id]
@@ -133,13 +133,19 @@ def main():
                                 
                                 vk.messages.send(
                                     user_id=user_id,
-                                    message="Инструкция:\n\n1. Скопируйте ссылку выше\n\n2. Вставьте её в приложение Happ\n\n3. Приложение само загрузит все конфиги\n\n4. Выберите любой и подключитесь\n\nСкачать Happ:\n" + HAPP_URL + "\n\nWHITE VPN - свобода в один клик!",
+                                    message="📱 Инструкция:\n\n"
+                                           "1️⃣ Скопируйте ссылку выше\n\n"
+                                           "2️⃣ Вставьте её в приложение Happ\n\n"
+                                           "3️⃣ Приложение само загрузит все конфиги\n\n"
+                                           "4️⃣ Выберите любой и подключитесь\n\n"
+                                           "📲 Скачать Happ:\n" + HAPP_URL + "\n\n"
+                                           "🚀 WHITE VPN - свобода в один клик!",
                                     random_id=random.randint(1, 2**31)
                                 )
                             else:
                                 vk.messages.send(
                                     user_id=user_id,
-                                    message="Ошибка: источник конфигов временно недоступен. Попробуйте позже.",
+                                    message="❌ Ошибка: источник конфигов временно недоступен. Попробуйте позже.",
                                     random_id=random.randint(1, 2**31)
                                 )
                             
@@ -147,14 +153,14 @@ def main():
                         else:
                             vk.messages.send(
                                 user_id=user_id,
-                                message="Пожалуйста, ответьте \"да\" или \"нет\".\n\nОткрывается ли сайт:\nhttps://redis0n.github.io/",
+                                message="❓ Пожалуйста, ответьте \"да\" или \"нет\".\n\n🔗 Открывается ли сайт:\nhttps://redis0n.github.io/",
                                 random_id=random.randint(1, 2**31)
                             )
                         continue
                     
                     vk.messages.send(
                         user_id=user_id,
-                        message="WHITE VPN - Добро пожаловать!\n\nПопробуйте зайти на сайт:\nhttps://redis0n.github.io/\n\nОткрывается ли сайт?\nНапишите \"да\" или \"нет\"",
+                        message="🌐 WHITE VPN - Добро пожаловать!\n\n🔗 Попробуйте зайти на сайт:\nhttps://redis0n.github.io/\n\n❓ Открывается ли сайт?\nНапишите \"да\" или \"нет\"",
                         random_id=random.randint(1, 2**31)
                     )
                     user_states[user_id] = "waiting_for_site_answer"
